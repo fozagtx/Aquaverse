@@ -5,6 +5,7 @@ import {
   SPECIES,
   STRESSORS,
   TICKS_PER_SECOND,
+  TREE_GROWTH_SECONDS,
 } from './constants';
 import { announce, buildFacts, narrate, takeSample, type Sample } from './narrator';
 import { bandOf, computeGauges } from './oneHealth';
@@ -82,6 +83,11 @@ export function countNearDrain(world: World): Record<SpeciesId, number> {
     }
   }
   return out;
+}
+
+/** How long a stressor keeps changing the stream: its timed effect, or the saplings growing after planting. */
+function effectSeconds(kind: StressorKind): number {
+  return kind === 'plantTrees' ? TREE_GROWTH_SECONDS : STRESSORS[kind].duration;
 }
 
 export class SimulationRuntime {
@@ -180,7 +186,7 @@ export class SimulationRuntime {
       this.gauges = computeGauges({ stream: this.world.stream, counts: this.counts() });
       const now = this.sample();
       for (const f of due) {
-        const facts = buildFacts('followUp', f.stressor, f.baseline, now, TICKS_PER_SECOND);
+        const facts = buildFacts('followUp', f.stressor, f.baseline, now, TICKS_PER_SECOND, undefined, this.overlapping(f.baseline.tick, f.stressor));
         added.push(this.addLog({ kind: 'narration', text: narrate(facts), facts, stressor: f.stressor }));
       }
     }
@@ -307,6 +313,22 @@ export class SimulationRuntime {
       out.push(this.addLog({ kind: 'narration', text: narrate(facts), facts, stressor: recent?.kind }));
     }
     return out;
+  }
+
+  /** Other stressors whose effects reach into the time since `since`: still running then, or applied after. */
+  private overlapping(since: number, kind: StressorKind): { during: StressorKind[]; later: StressorKind[] } {
+    const during: StressorKind[] = [];
+    const later: StressorKind[] = [];
+    for (const step of this.script) {
+      if (step.kind !== 'stressor' || step.stressor === kind) continue;
+      const k = step.stressor;
+      if (step.tick >= since) {
+        if (!later.includes(k)) later.push(k);
+      } else if (step.tick + effectSeconds(k) * TICKS_PER_SECOND > since && !during.includes(k)) {
+        during.push(k);
+      }
+    }
+    return { during, later: later.filter((k) => !during.includes(k)) };
   }
 
   private captureBookmark(): void {

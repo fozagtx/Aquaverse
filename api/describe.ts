@@ -1,4 +1,4 @@
-import { respond } from './_lib/handlers';
+import { respond } from './_lib/handlers.js';
 
 export function GET(request: Request): Promise<Response> {
   return respond('describe', request);

@@ -243,7 +243,8 @@ export function FieldGuide({ section, onSectionShown }: { section: string | null
             <p>
               The narrator is rule-based. After each stressor it compares the stream now with the moment the stressor started and
               turns the facts (the stressor, the water variables that moved, the species that changed, the gauges that moved)
-              into one or two sentences. It cannot say anything the simulation did not do.
+              into one or two sentences. It cannot say anything the simulation did not do. If another stressor was still running
+              when this one started, or was applied since, the sentence names it too, because its effects are part of the change.
             </p>
             <p>When the site has an AI key configured, three optional helpers appear. All are clearly labelled and all have a rule-based fallback.</p>
             <ul>

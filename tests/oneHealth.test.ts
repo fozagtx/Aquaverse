@@ -86,6 +86,49 @@ describe('rule-based narrator (P0-8)', () => {
     const last = logs.filter((l) => l.kind === 'narration' && l.facts?.trigger === 'followUp').pop()!;
     expect(last.text).toMatch(/The bank trees were cleared, so the water warmed by [\d.]+ °C/);
   });
+
+  it('names a stressor that overlapped the one being explained', () => {
+    const rt = runtime();
+    runSeconds(rt, 20);
+    rt.applyStressor('sewage');
+    runSeconds(rt, 10);
+    rt.applyStressor('heatwave');
+    runSeconds(rt, 10);
+    rt.applyStressor('storm');
+    const logs = runSeconds(rt, 45);
+    const followUps = logs.filter((l) => l.kind === 'narration' && l.facts?.trigger === 'followUp');
+
+    // The heatwave began while sewage was still leaking, and the storm came after it.
+    const heat = followUps.find((l) => l.stressor === 'heatwave')!;
+    expect(heat.facts).toMatchObject({ during: ['sewage'], later: ['storm'] });
+    expect(heat.text).toMatch(/^The heatwave heated the air while sewage leaked from the storm drain, then storm runoff washed off the pavement, so /);
+    expect(narrate(heat.facts!)).toBe(heat.text);
+
+    // The sewage explanation names both stressors that came after it.
+    const sewage = followUps.find((l) => l.stressor === 'sewage')!;
+    expect(sewage.facts?.during).toBeUndefined();
+    expect(sewage.facts?.later).toEqual(['heatwave', 'storm']);
+  });
+
+  it('counts saplings that are still growing as an overlapping stressor', () => {
+    const rt = runtime();
+    runSeconds(rt, 20);
+    rt.applyStressor('plantTrees');
+    runSeconds(rt, 10);
+    rt.applyStressor('heatwave');
+    const logs = runSeconds(rt, 25);
+    const heat = logs.find((l) => l.kind === 'narration' && l.facts?.trigger === 'followUp' && l.stressor === 'heatwave')!;
+    expect(heat.facts?.during).toEqual(['plantTrees']);
+    expect(heat.text).toMatch(/^The heatwave heated the air while new bank trees were planted, /);
+  });
+
+  it('names no other stressor when one acts alone', () => {
+    const { logs } = stressTest('heatwave', 60);
+    for (const l of logs.filter((x) => x.kind === 'narration' && x.facts?.trigger === 'followUp')) {
+      expect(l.facts?.during).toBeUndefined();
+      expect(l.facts?.later).toBeUndefined();
+    }
+  });
 });
 
 describe('gauges are part of the replayed state', () => {

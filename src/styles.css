@@ -977,12 +977,14 @@ main:focus {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
+/* The hint goes on its own line and wraps, so it is never cut off in narrow cells. */
 .water-now dd .tiny {
+  display: block;
   font-weight: 400;
+  white-space: normal;
+  line-height: 1.25;
 }
 
 /* stressors */
@@ -1742,6 +1744,13 @@ main:focus {
   .tabs {
     order: 3;
     flex-basis: 100%;
+    justify-content: space-between;
+    gap: 2px;
+  }
+  /* All four views fit on a 360 px screen, so none hides off the edge. */
+  .tab {
+    padding: 6px 7px;
+    font-size: 0.85rem;
   }
   .top-actions {
     margin-left: auto;
@@ -1784,6 +1793,13 @@ main:focus {
   .check-foot .row {
     width: 100%;
     justify-content: space-between;
+  }
+}
+
+@media (max-width: 359px) {
+  .tab {
+    padding: 5px 4px;
+    font-size: 0.78rem;
   }
 }
 

@@ -346,9 +346,12 @@ export function sanitizeFacts(raw: unknown): Record<string, unknown> | null {
           return Object.fromEntries(keys.map((k) => [k, typeof o[k] === 'number' ? num(o[k]) : str(o[k])]));
         })
       : [];
+  const kinds = (v: unknown) => (Array.isArray(v) ? v.slice(0, 3).map((s) => str(s, 12)) : []);
   const risk = (f.risk ?? {}) as Record<string, unknown>;
   return {
     stressor: str(f.stressor),
+    during: kinds(f.during),
+    later: kinds(f.later),
     secondsSince: num(f.secondsSince),
     variables: list(f.variables, ['key', 'from', 'to']),
     species: list(f.species, ['species', 'from', 'to']),

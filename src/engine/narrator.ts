@@ -160,12 +160,15 @@ export function buildFacts(
   after: Sample,
   tickRate: number,
   bandGauge?: GaugeId,
+  others: { during: StressorKind[]; later: StressorKind[] } = { during: [], later: [] },
 ): CauseFacts {
   const risk = after.gauges.risk;
   const secondsSince = Math.round((after.tick - before.tick) / tickRate);
   return {
     trigger,
     stressor,
+    ...(others.during.length ? { during: others.during } : {}),
+    ...(others.later.length ? { later: others.later } : {}),
     secondsSince,
     variables: variableChanges(before, after, stressor, secondsSince >= LATE_SECONDS),
     species: speciesChanges(before.counts, after.counts),
@@ -188,6 +191,16 @@ const CAUSE: Record<StressorKind, string> = {
   sewage: 'Sewage leaked from the storm drain',
   clearTrees: 'The bank trees were cleared',
   plantTrees: 'New bank trees were planted',
+};
+
+/** The same causes mid-sentence, for other stressors that overlapped the one being explained. */
+const THEN: Record<StressorKind, string> = {
+  heatwave: 'a heatwave heated the air',
+  drought: 'a drought cut the flow',
+  storm: 'storm runoff washed off the pavement',
+  sewage: 'sewage leaked from the storm drain',
+  clearTrees: 'the bank trees were cleared',
+  plantTrees: 'new bank trees were planted',
 };
 
 const WATCH: Record<StressorKind, string> = {
@@ -247,28 +260,28 @@ function speciesPhrase(c: SpeciesChange): string {
   return ratio > 1 ? `${plural} have increased` : `${plural} have declined`;
 }
 
-/** Whether the species changes themselves explain a change in human health risk. */
-function speciesDriveRisk(facts: CauseFacts, up: boolean): boolean {
-  return facts.species.some((c) =>
+/** Whether the species changes named in the sentence themselves explain a change in human health risk. */
+function speciesDriveRisk(named: SpeciesChange[], up: boolean): boolean {
+  return named.some((c) =>
     up
       ? (c.species === 'mosquito' && c.to > c.from) || (c.species === 'fish' && c.to < c.from)
       : (c.species === 'mosquito' && c.to < c.from) || (c.species === 'fish' && c.to > c.from),
   );
 }
 
-function healthClause(facts: CauseFacts, hasSpecies: boolean): string {
+function healthClause(facts: CauseFacts, hasSpecies: boolean, named: SpeciesChange[] = []): string {
   const r = facts.gauges.find((g) => g.gauge === 'risk');
   const delta = r ? r.to - r.from : 0;
   const top = facts.risk.topKey === 'none' ? '' : `, mainly from ${facts.risk.topPhrase}`;
   if (delta >= 4) {
     if (!hasSpecies) return `The health risk for people nearby has risen${top}`;
-    return speciesDriveRisk(facts, true)
+    return speciesDriveRisk(named, true)
       ? `, which raises the health risk for people nearby${top}`
       : `; meanwhile the health risk for people nearby has risen${top}`;
   }
   if (delta <= -4) {
     if (!hasSpecies) return 'The health risk for people nearby has fallen';
-    return speciesDriveRisk(facts, false) ? ', which lowers the health risk for people nearby' : '; meanwhile the health risk for people nearby has fallen';
+    return speciesDriveRisk(named, false) ? ', which lowers the health risk for people nearby' : '; meanwhile the health risk for people nearby has fallen';
   }
   const stays = facts.risk.band === 'low' ? 'stays low for now' : `stays ${facts.risk.band}${top}`;
   return hasSpecies ? `; the health risk for people nearby ${stays}` : `The health risk for people nearby ${stays}`;
@@ -278,31 +291,39 @@ function healthClause(facts: CauseFacts, hasSpecies: boolean): string {
 export function narrate(facts: CauseFacts): string {
   if (facts.trigger === 'band' && facts.bandGauge) return narrateBand(facts);
 
-  const cause = facts.stressor ? CAUSE[facts.stressor] : 'The stream has been changing on its own';
+  // The changes include the effects of any stressor that overlapped this one, so name them too.
+  const during = (facts.during ?? []).slice(0, 2);
+  const later = (facts.later ?? []).slice(0, 2);
+  let cause = facts.stressor ? CAUSE[facts.stressor] : 'The stream has been changing on its own';
+  if (facts.stressor && during.length) cause += ` while ${during.map((k) => THEN[k]).join(' and ')}`;
+  if (facts.stressor && later.length) cause += `, then ${later.map((k) => THEN[k]).join(' and ')}`;
   const vars = facts.variables.slice(0, 2).map(variablePhrase);
   const first = vars.length
     ? `${cause}, so ${vars.join(' and ')}.`
     : `${cause}, but the water has not changed much yet.`;
 
-  const sp = facts.species.slice(0, 2).map(speciesPhrase);
+  // Each phrase keeps the species change it reports, if any, so the health clause
+  // only draws a causal link from changes the sentence actually names.
+  const sp: Array<{ text: string; change?: SpeciesChange }> = facts.species.slice(0, 2).map((c) => ({ text: speciesPhrase(c), change: c }));
   const drain = facts.nearDrain.find((c) => !facts.species.some((x) => x.species === c.species));
   if (drain && sp.length < 2) {
-    sp.unshift(`${SPECIES[drain.species].plural} have ${drain.to === 0 ? 'vanished from' : 'fled'} the water near the drain`);
+    sp.unshift({ text: `${SPECIES[drain.species].plural} have ${drain.to === 0 ? 'vanished from' : 'fled'} the water near the drain` });
   }
   if (facts.washedOut >= 3) {
-    sp.unshift(`${facts.washedOut} small creatures were washed away`);
+    sp.unshift({ text: `${facts.washedOut} small creatures were washed away` });
     if (sp.length > 2) sp.length = 2;
   }
   const stressedFish = facts.stressed.includes('fish') && !facts.species.some((c) => c.species === 'fish');
-  if (stressedFish && sp.length < 2) sp.push('fish are stressed');
+  if (stressedFish && sp.length < 2) sp.push({ text: 'fish are stressed' });
   if (!sp.length && facts.stressed.length) {
-    sp.push(`${SPECIES[facts.stressed[0]].plural.toLowerCase()} are struggling`);
+    sp.push({ text: `${SPECIES[facts.stressed[0]].plural.toLowerCase()} are struggling` });
   }
 
   let second: string;
   if (sp.length) {
-    const species = upperFirst(sp.map((p, i) => (i === 0 ? p : lowerFirst(p))).join(' and '));
-    second = `${species}${healthClause(facts, true)}.`;
+    const species = upperFirst(sp.map((p, i) => (i === 0 ? p.text : lowerFirst(p.text))).join(' and '));
+    const named = sp.flatMap((p) => (p.change ? [p.change] : []));
+    second = `${species}${healthClause(facts, true, named)}.`;
   } else {
     second = `${healthClause(facts, false)}.`;
   }

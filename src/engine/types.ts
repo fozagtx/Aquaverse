@@ -228,6 +228,12 @@ export interface GaugeChange {
 export interface CauseFacts {
   trigger: 'stressor' | 'followUp' | 'band';
   stressor: StressorKind | null;
+  /**
+   * Other stressors whose effects are mixed into the changes: still running
+   * when this one began, or applied since.
+   */
+  during?: StressorKind[];
+  later?: StressorKind[];
   secondsSince: number;
   variables: VariableChange[];
   species: SpeciesChange[];

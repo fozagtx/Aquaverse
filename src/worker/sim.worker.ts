@@ -16,6 +16,8 @@ let rt: SimulationRuntime | null = null;
 let playing = false;
 let speed = 1;
 let viewTick: number | null = null;
+/** Whether the run was playing when the user started looking at the past. */
+let resumeOnLive = false;
 let sentTerrainVersion = -1;
 let sentHistory = 0;
 let sentLog = 0;
@@ -89,6 +91,15 @@ function loop(): void {
   sendData();
 }
 
+/** Leaves the past for the live run, playing again if it was playing before looking back. */
+function leaveView(): void {
+  const resume = viewTick !== null && resumeOnLive;
+  viewTick = null;
+  resumeOnLive = false;
+  if (resume) setPlaying(true);
+  else snapshot();
+}
+
 function setPlaying(on: boolean): void {
   playing = on;
   if (on) {
@@ -111,6 +122,7 @@ ctx.onmessage = (event: MessageEvent<ToWorker>) => {
         setPlaying(false);
         rt = new SimulationRuntime(msg.config, msg.script ?? []);
         viewTick = null;
+        resumeOnLive = false;
         sentTerrainVersion = -1;
         if (msg.endTick && msg.endTick > 0) {
           // Replay an imported run to where it was saved.
@@ -153,24 +165,32 @@ ctx.onmessage = (event: MessageEvent<ToWorker>) => {
         break;
       case 'view':
         if (!rt) break;
+        if (msg.tick >= rt.tick) {
+          leaveView();
+          break;
+        }
+        if (viewTick === null) resumeOnLive = playing;
         setPlaying(false);
-        viewTick = msg.tick >= rt.tick ? null : msg.tick;
+        viewTick = msg.tick;
         snapshot();
         break;
       case 'live':
-        viewTick = null;
-        snapshot();
+        leaveView();
         break;
       case 'rewind': {
         if (!rt) break;
+        // "Resume from here" carries on from that moment, as it was before looking back.
+        const resume = viewTick !== null && resumeOnLive;
         setPlaying(false);
         const ticks = rt.frameTicks();
         let index = 0;
         for (let i = 0; i < ticks.length; i++) if (ticks[i] <= msg.tick) index = i;
         rt.rewindTo(index);
         viewTick = null;
+        resumeOnLive = false;
         sendData(true);
-        snapshot();
+        if (resume) setPlaying(true);
+        else snapshot();
         break;
       }
       case 'export':
