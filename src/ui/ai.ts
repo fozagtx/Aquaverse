@@ -11,9 +11,11 @@ export interface AiStatus {
   narrate: boolean;
   jevModel: string;
   narratorModel: string | null;
+  /** Why the helpers are off: no key on the server, switched off, or the server could not be reached. */
+  reason?: 'no-key' | 'disabled' | 'unreachable' | null;
 }
 
-const OFF: AiStatus = { describe: false, check: false, narrate: false, jevModel: 'typesafe/jev', narratorModel: null };
+const OFF: AiStatus = { describe: false, check: false, narrate: false, jevModel: 'typesafe/jev', narratorModel: null, reason: 'unreachable' };
 
 async function call<T>(path: string, init: RequestInit, timeoutMs: number): Promise<T> {
   const controller = new AbortController();
@@ -35,6 +37,21 @@ export function aiStatus(): Promise<AiStatus> {
     statusPromise = call<AiStatus>('/api/status', { method: 'GET' }, 4000).catch(() => OFF);
   }
   return statusPromise;
+}
+
+export interface AiCheck {
+  ok: boolean;
+  reason?: string;
+  jev?: { model: string; ok: boolean; error?: string };
+  narrator?: { model: string; ok: boolean; error?: string };
+}
+
+let verifyPromise: Promise<AiCheck | null> | null = null;
+
+/** Whether AI/ML API actually accepts the server's key for both models (checked by the server, cached there). */
+export function verifyAi(): Promise<AiCheck | null> {
+  if (!verifyPromise) verifyPromise = call<AiCheck>('/api/verify', { method: 'GET' }, 15000).catch(() => null);
+  return verifyPromise;
 }
 
 export interface DescribeResult {

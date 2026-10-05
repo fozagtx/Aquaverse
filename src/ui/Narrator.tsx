@@ -97,7 +97,7 @@ function ExplainBack({ entry, ai }: { entry: LogEntry; ai: AiStatus | null }) {
 
 export function Narrator({ log, aiWanted, onToggleAi, onOpenLog }: { log: LogEntry[]; aiWanted: boolean; onToggleAi: (on: boolean) => void; onOpenLog: () => void }) {
   const [ai, setAi] = useState<AiStatus | null>(null);
-  const [reworded, setReworded] = useState<Record<number, { text: string; model: string } | null>>({});
+  const [reworded, setReworded] = useState<Record<number, { text: string; model: string } | 'pending' | 'failed'>>({});
   const [showRule, setShowRule] = useState(false);
 
   useEffect(() => {
@@ -112,9 +112,9 @@ export function Narrator({ log, aiWanted, onToggleAi, onOpenLog }: { log: LogEnt
     if (!explanation?.facts || !ai?.narrate || !aiWanted) return;
     if (explanation.id in reworded) return;
     let alive = true;
-    setReworded((r) => ({ ...r, [explanation.id]: null }));
+    setReworded((r) => ({ ...r, [explanation.id]: 'pending' }));
     rewordNarration(explanation.facts, explanation.text).then((res) => {
-      if (alive) setReworded((r) => ({ ...r, [explanation.id]: res }));
+      if (alive) setReworded((r) => ({ ...r, [explanation.id]: res ?? 'failed' }));
     });
     return () => {
       alive = false;
@@ -122,7 +122,8 @@ export function Narrator({ log, aiWanted, onToggleAi, onOpenLog }: { log: LogEnt
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [explanation?.id, ai?.narrate, aiWanted]);
 
-  const aiText = explanation ? reworded[explanation.id] : null;
+  const wording = explanation ? reworded[explanation.id] : undefined;
+  const aiText = typeof wording === 'object' ? wording : null;
   const useAi = Boolean(aiWanted && ai?.narrate && aiText && !showRule);
 
   return (
@@ -148,8 +149,10 @@ export function Narrator({ log, aiWanted, onToggleAi, onOpenLog }: { log: LogEnt
               AI-written explanation ({aiText!.model}), reworded from the rule-based facts.{' '}
               <button className="linklike tiny" onClick={() => setShowRule(true)}>Show the rule-based version</button>
             </p>
-          ) : aiWanted && ai?.narrate && aiText === null && explanation.id in reworded ? (
+          ) : aiWanted && ai?.narrate && wording === 'pending' ? (
             <p className="muted tiny">Wording it more simply…</p>
+          ) : aiWanted && ai?.narrate && wording === 'failed' ? (
+            <p className="muted tiny">The AI wording could not be fetched, so this is the rule-based explanation.</p>
           ) : showRule && aiText ? (
             <p className="muted tiny">
               Rule-based explanation. <button className="linklike tiny" onClick={() => setShowRule(false)}>Show the AI wording</button>

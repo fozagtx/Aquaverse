@@ -34,7 +34,7 @@ const TYPES: Record<string, string> = {
 };
 
 const COMPRESSIBLE = new Set(['.html', '.js', '.css', '.json', '.svg', '.txt']);
-const API = /^\/api\/(status|describe|check|narrate)$/;
+const API = /^\/api\/(status|verify|describe|check|narrate)$/;
 
 export interface ServerOptions {
   /** Folder with the built site. */

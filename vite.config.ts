@@ -11,7 +11,7 @@ import type { AiEnv } from './server/ai';
 function localApi(env: AiEnv): Plugin {
   const attach = (server: ViteDevServer | PreviewServer, load: () => Promise<typeof import('./server/ai')>) => {
     server.middlewares.use(async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
-      const match = (req.url ?? '').match(/^\/api\/(status|describe|check|narrate)(?:\?|$)/);
+      const match = (req.url ?? '').match(/^\/api\/(status|verify|describe|check|narrate)(?:\?|$)/);
       if (!match) return next();
       const chunks: Buffer[] = [];
       for await (const chunk of req) chunks.push(chunk as Buffer);
@@ -47,6 +47,7 @@ export default defineConfig(({ mode, isSsrBuild }) => {
       react(),
       localApi({
         AIMLAPI_KEY: env.AIMLAPI_KEY,
+        AIMLAPI_BASE_URL: env.AIMLAPI_BASE_URL,
         AIMLAPI_NARRATOR_MODEL: env.AIMLAPI_NARRATOR_MODEL,
         AI_DAILY_CALL_LIMIT: env.AI_DAILY_CALL_LIMIT,
         AI_DISABLED: env.AI_DISABLED,

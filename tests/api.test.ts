@@ -6,6 +6,7 @@ import {
   handleDescribe,
   handleNarrate,
   handleStatus,
+  handleVerify,
   JEV_MODEL,
   resetGuards,
   route,
@@ -40,6 +41,65 @@ describe('AI status', () => {
     expect(handleStatus({})).toEqual({ status: 200, body: expect.objectContaining({ describe: false, narrate: false }) });
     expect(handleStatus({ AIMLAPI_KEY: 'k' }).body).toEqual(expect.objectContaining({ describe: true, narratorModel: DEFAULT_NARRATOR_MODEL }));
     expect(handleStatus({ AIMLAPI_KEY: 'k', AI_DISABLED: '1' }).body).toEqual(expect.objectContaining({ describe: false }));
+  });
+
+  it('says why the helpers are off', () => {
+    expect(handleStatus({}).body).toEqual(expect.objectContaining({ reason: 'no-key' }));
+    expect(handleStatus({ AIMLAPI_KEY: 'k', AI_DISABLED: 'true' }).body).toEqual(expect.objectContaining({ reason: 'disabled' }));
+    expect(handleStatus({ AIMLAPI_KEY: 'k' }).body).toEqual(expect.objectContaining({ reason: null }));
+  });
+});
+
+describe('key check (/api/verify)', () => {
+  const jevOk = { model: 'typesafe/jev-1.13', answers: { about_water: { type: 'noul', noul: 0.98 } } };
+  const chatOk = { choices: [{ message: { content: 'ready' } }] };
+  const upstream = (decisions: Response, chat: Response) =>
+    vi.fn(async (url: string) => (url.endsWith('/decisions') ? decisions.clone() : chat.clone()));
+
+  it('needs no call when there is no key', async () => {
+    const f = vi.fn();
+    const res = await handleVerify(ctx(f as unknown as typeof fetch, {}));
+    expect(res.body).toEqual({ ok: false, reason: 'no-key' });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('proves both models work, then reuses the result instead of spending credit', async () => {
+    const f = upstream(jsonResponse(jevOk), jsonResponse(chatOk));
+    const first = await handleVerify(ctx(f as unknown as typeof fetch));
+    expect(first.body).toEqual({ ok: true, jev: { model: JEV_MODEL, ok: true }, narrator: { model: DEFAULT_NARRATOR_MODEL, ok: true } });
+    expect(f).toHaveBeenCalledTimes(2);
+    await handleVerify(ctx(f as unknown as typeof fetch));
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports what AI/ML API said when it refuses the key, and logs it without the key', async () => {
+    const logs: string[] = [];
+    const refused = new Response(JSON.stringify({ message: 'Invalid API key' }), { status: 401 });
+    const f = upstream(refused, refused);
+    const res = await handleVerify({ ...ctx(f as unknown as typeof fetch, { AIMLAPI_KEY: 'secret-key-123' }), log: (m) => logs.push(m) });
+    const body = res.body as { ok: boolean; jev: { ok: boolean; error: string }; narrator: { ok: boolean; error: string } };
+    expect(body.ok).toBe(false);
+    expect(body.jev.error).toMatch(/^upstream 401: .*Invalid API key/);
+    expect(body.narrator.ok).toBe(false);
+    expect(logs).toHaveLength(2);
+    expect(logs[0]).toMatch(/^\[ai\] (jev|narrator) check failed: upstream 401/);
+    expect(logs.join(' ')).not.toContain('secret-key-123');
+  });
+
+  it('can point at a stand-in API for testing', async () => {
+    const f = upstream(jsonResponse(jevOk), jsonResponse(chatOk));
+    await handleVerify(ctx(f as unknown as typeof fetch, { AIMLAPI_KEY: 'k', AIMLAPI_BASE_URL: 'http://127.0.0.1:9999/v1/' }));
+    expect(f.mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining(['http://127.0.0.1:9999/v1/decisions', 'http://127.0.0.1:9999/v1/chat/completions']));
+  });
+});
+
+describe('failed calls are logged', () => {
+  it('writes the upstream status to the log when a helper fails', async () => {
+    const logs: string[] = [];
+    const f = vi.fn(async () => new Response('insufficient credits', { status: 402 }));
+    const res = await handleDescribe({ text: 'Clear water over stones, lots of bugs.' }, { ...ctx(f as unknown as typeof fetch), log: (m) => logs.push(m) });
+    expect(res.status).toBe(502);
+    expect(logs).toEqual(['[ai] describe failed: upstream 402: insufficient credits']);
   });
 });
 

@@ -16,6 +16,8 @@ import { createHash } from 'node:crypto';
 
 export interface AiEnv {
   AIMLAPI_KEY?: string;
+  /** Only for testing against a stand-in; defaults to the real AI/ML API. */
+  AIMLAPI_BASE_URL?: string;
   AIMLAPI_NARRATOR_MODEL?: string;
   AI_DAILY_CALL_LIMIT?: string;
   AI_DISABLED?: string;
@@ -26,6 +28,8 @@ export interface HandlerContext {
   fetch: typeof fetch;
   ip: string;
   now?: number;
+  /** Where upstream failures are reported (the server log by default). Never receives the key. */
+  log?: (message: string) => void;
 }
 
 export interface ApiResult {
@@ -102,12 +106,20 @@ class Lru<V> {
 const budget = new DailyBudget();
 const limiter = new RateLimiter(12);
 const cache = new Lru<unknown>(400);
+let lastVerify: { at: number; result: ApiResult } | null = null;
 
 /** Clears in-memory guards (tests only). */
 export function resetGuards(): void {
   budget.reset();
   limiter.reset();
   cache.reset();
+  lastVerify = null;
+}
+
+/** Reports a failed upstream call in the server log, so a host's log view shows why AI is not working. */
+function logFailure(ctx: HandlerContext, what: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  (ctx.log ?? console.error)(`[ai] ${what} failed: ${message}`);
 }
 
 function hashKey(kind: string, payload: unknown): string {
@@ -141,7 +153,8 @@ async function postJson(ctx: HandlerContext, path: string, payload: unknown): Pr
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   try {
-    const res = await ctx.fetch(`${AIML_BASE}${path}`, {
+    const base = (ctx.env.AIMLAPI_BASE_URL ?? '').trim().replace(/\/+$/, '') || AIML_BASE;
+    const res = await ctx.fetch(`${base}${path}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${ctx.env.AIMLAPI_KEY}`,
@@ -150,7 +163,11 @@ async function postJson(ctx: HandlerContext, path: string, payload: unknown): Pr
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`upstream ${res.status}`);
+    if (!res.ok) {
+      // Keep a short piece of the reply (for example "invalid api key" or "insufficient credits") for the log.
+      const detail = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200);
+      throw new Error(`upstream ${res.status}${detail ? `: ${detail}` : ''}`);
+    }
     return await res.json();
   } finally {
     clearTimeout(timer);
@@ -166,12 +183,69 @@ function cleanText(v: unknown, max: number): string | null {
 
 // ---------------------------------------------------------------- status
 
+/** Why the AI helpers are off, or null when they are on. */
+function offReason(env: AiEnv): 'no-key' | 'disabled' | null {
+  if (!env.AIMLAPI_KEY) return 'no-key';
+  return aiEnabled(env) ? null : 'disabled';
+}
+
 export function handleStatus(env: AiEnv): ApiResult {
   const on = aiEnabled(env);
   return {
     status: 200,
-    body: { describe: on, check: on, narrate: on, jevModel: JEV_MODEL, narratorModel: on ? narratorModel(env) : null },
+    body: { describe: on, check: on, narrate: on, jevModel: JEV_MODEL, narratorModel: on ? narratorModel(env) : null, reason: offReason(env) },
   };
+}
+
+/** A passing check is trusted for hours; a failing one is retried soon, in case it was fixed. */
+const VERIFY_PASS_MS = 6 * 60 * 60_000;
+const VERIFY_FAIL_MS = 10 * 60_000;
+
+/**
+ * Makes one tiny Jev call and one tiny narrator call to prove the key, the
+ * models and the credit all work. The result is kept, so page loads do not
+ * spend credit.
+ */
+export async function handleVerify(ctx: HandlerContext): Promise<ApiResult> {
+  const reason = offReason(ctx.env);
+  if (reason) return { status: 200, body: { ok: false, reason } };
+  const now = ctx.now ?? Date.now();
+  if (lastVerify && now - lastVerify.at < ((lastVerify.result.body as { ok: boolean }).ok ? VERIFY_PASS_MS : VERIFY_FAIL_MS)) {
+    return lastVerify.result;
+  }
+  const blocked = gate(ctx);
+  if (blocked) return { status: 200, body: { ok: false, reason: (blocked.body as { error: string }).error } };
+
+  const probe = async (what: string, run: () => Promise<boolean>) => {
+    try {
+      return (await run()) ? { ok: true } : { ok: false, error: 'unexpected reply' };
+    } catch (err) {
+      logFailure(ctx, `${what} check`, err);
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  };
+  const model = narratorModel(ctx.env);
+  const [jev, narrator] = await Promise.all([
+    probe('jev', async () => {
+      const data = (await postJson(ctx, '/decisions', {
+        model: JEV_MODEL,
+        state: 'Clear water runs over stones under the trees.',
+        questions: { about_water: { type: 'noul', instructions: 'Is this text about water?' } },
+      })) as { answers?: { about_water?: NoulAnswer } };
+      return data.answers?.about_water?.type === 'noul';
+    }),
+    probe('narrator', async () => {
+      const data = (await postJson(ctx, '/chat/completions', {
+        model,
+        max_tokens: 5,
+        messages: [{ role: 'user', content: 'Reply with the single word: ready' }],
+      })) as { choices?: Array<{ message?: { content?: unknown } }> };
+      return typeof data.choices?.[0]?.message?.content === 'string';
+    }),
+  ]);
+  const result: ApiResult = { status: 200, body: { ok: jev.ok && narrator.ok, jev: { model: JEV_MODEL, ...jev }, narrator: { model, ...narrator } } };
+  lastVerify = { at: now, result };
+  return result;
 }
 
 // ---------------------------------------------------------------- describe (Jev)
@@ -262,7 +336,8 @@ export async function handleDescribe(body: unknown, ctx: HandlerContext): Promis
     const result = { answers, confidence, model: typeof data.model === 'string' ? data.model : JEV_MODEL };
     cache.set(key, result);
     return { status: 200, body: result };
-  } catch {
+  } catch (err) {
+    logFailure(ctx, 'describe', err);
     return { status: 502, body: { error: 'upstream' } };
   }
 }
@@ -308,7 +383,10 @@ export async function handleCheck(body: unknown, ctx: HandlerContext): Promise<A
     })) as { model?: string; answers?: { understanding?: ScoreAnswer; mentions_health?: NoulAnswer } };
     const u = data.answers?.understanding;
     const h = data.answers?.mentions_health;
-    if (!u || u.type !== 'score' || !Number.isFinite(u.score)) return { status: 502, body: { error: 'upstream' } };
+    if (!u || u.type !== 'score' || !Number.isFinite(u.score)) {
+      logFailure(ctx, 'check', new Error('reply had no score'));
+      return { status: 502, body: { error: 'upstream' } };
+    }
     const score = Math.max(0, Math.min(CHECK_LEVELS.length - 1, u.score));
     const result = {
       score: Math.round(score * 10) / 10,
@@ -319,7 +397,8 @@ export async function handleCheck(body: unknown, ctx: HandlerContext): Promise<A
     };
     cache.set(key, result);
     return { status: 200, body: result };
-  } catch {
+  } catch (err) {
+    logFailure(ctx, 'check', err);
     return { status: 502, body: { error: 'upstream' } };
   }
 }
@@ -404,11 +483,15 @@ export async function handleNarrate(body: unknown, ctx: HandlerContext): Promise
     })) as { choices?: Array<{ message?: { content?: unknown } }> };
     const content = data.choices?.[0]?.message?.content;
     const text = typeof content === 'string' ? acceptRewording(content, template) : null;
-    if (!text) return { status: 502, body: { error: 'rejected' } };
+    if (!text) {
+      logFailure(ctx, 'narrate', new Error('rewording rejected (empty, too long, or added numbers)'));
+      return { status: 502, body: { error: 'rejected' } };
+    }
     const result = { text, model };
     cache.set(key, result);
     return { status: 200, body: result };
-  } catch {
+  } catch (err) {
+    logFailure(ctx, 'narrate', err);
     return { status: 502, body: { error: 'upstream' } };
   }
 }
@@ -423,9 +506,9 @@ export const MAX_BODY_BYTES = 8 * 1024;
 
 /** Routes one API request. Used by the production server and the dev server. */
 export async function route(name: string, method: string, rawBody: string, ctx: HandlerContext): Promise<ApiResult> {
-  if (name === 'status') {
+  if (name === 'status' || name === 'verify') {
     if (method !== 'GET') return { status: 405, body: { error: 'method' } };
-    return handleStatus(ctx.env);
+    return name === 'status' ? handleStatus(ctx.env) : handleVerify(ctx);
   }
   if (method !== 'POST') return { status: 405, body: { error: 'method' } };
   if (rawBody.length > MAX_BODY_BYTES) return { status: 413, body: { error: 'too-large' } };

@@ -158,6 +158,9 @@ Copy `.env.example` to `.env` for local runs; on Render, set them in the service
 | `AIMLAPI_NARRATOR_MODEL` | `amazon/nova-micro-v1` | Chat model used for rewording |
 | `AI_DAILY_CALL_LIMIT` | `400` | Upstream calls allowed per day |
 | `AI_DISABLED` | unset | Set to `1` to switch every helper off without removing the key |
+| `AIMLAPI_BASE_URL` | `https://api.aimlapi.com/v1` | Only for testing against a stand-in API |
+
+**Is the AI working?** The footer of every page says so in one line: on (and which models), off because the server has no key, or key set but refused by AI/ML API, with the reason it gave. Behind it, `/api/verify` makes one tiny call to each model. A passing check is reused for six hours and a failing one for ten minutes, so page loads do not spend credit. Every failed AI call is also written to the server log (on Render, the service's **Logs** tab) with AI/ML API's status code and message, never the key. The creatures, water and gauges are always rule-based; AI only powers the three helpers above.
 
 **Keeping costs down.** Every call is cached by its inputs, rate limited to 12 per minute per visitor and counted against the daily limit. Rewording is capped at 110 output tokens. These guards live in server memory, so a restart resets the count. With a small balance, set a low `AI_DAILY_CALL_LIMIT` and watch usage on your AI/ML API dashboard, or set `AI_DISABLED=1` to stop all calls at once. Check current rates on the [AI/ML API pricing page](https://aimlapi.com/ai-ml-api-pricing).
 

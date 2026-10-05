@@ -413,6 +413,34 @@ main:focus {
   margin: 0 auto;
 }
 
+/* Whether the optional AI helpers work; the words carry the meaning, the dot only repeats it. */
+.footer .ai-status {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.ai-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--muted);
+  transform: translateY(1px);
+}
+
+.ai-on .ai-dot {
+  background: var(--good);
+}
+
+.ai-problem .ai-dot {
+  background: var(--bad);
+}
+
 .card {
   background: var(--panel);
   border: 2px solid var(--edge);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseRunExport } from '../engine/runtime';
+import { AiStatusLine } from './AiStatusLine';
 import { isValidAnswers, QUESTION_ORDER, SAMPLE_ANSWERS } from '../engine/streamProfile';
 import type { RunConfig, StreamAnswers } from '../engine/types';
 import { FieldGuide } from './FieldGuide';
@@ -215,6 +216,7 @@ export function App() {
       )}
 
       <footer className="footer">
+        <AiStatusLine />
         <p>
           AquaVerse is an illustrative teaching model. It does not measure or predict any real stream. Built for the OneAquaHealth
           IEEE Global Hackathon, Track 4: Awareness &amp; Storytelling.
