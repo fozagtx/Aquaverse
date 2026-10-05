@@ -4,16 +4,14 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createGzip } from 'node:zlib';
-import { MAX_BODY_BYTES, route, type AiEnv } from '../api/_lib/handlers';
+import { MAX_BODY_BYTES, route, type AiEnv } from './ai';
 
 /**
- * Production server for hosts that run a Node process, such as Render
- * (see render.yaml). It serves the built site from dist/ and the optional AI
- * helpers under /api/ with the same handlers the Vercel functions use, and
- * sends the same security headers as vercel.json.
+ * Production server, deployed on Render (see render.yaml). It serves the built
+ * site from dist/ and the optional AI helpers under /api/, with a strict
+ * content security policy and other security headers on every response.
  */
 
-/** Must match the headers in vercel.json; a test checks that they do. */
 export const SECURITY_HEADERS: Record<string, string> = {
   'Content-Security-Policy':
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",

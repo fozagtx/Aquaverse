@@ -1,15 +1,15 @@
 import { defineConfig, loadEnv, type Plugin, type PreviewServer, type ViteDevServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { AiEnv } from './api/_lib/handlers';
+import type { AiEnv } from './server/ai';
 
 /**
- * Serves /api/* from the same handlers the Vercel functions use, so the AI
+ * Serves /api/* from the same handlers the production server uses, so the AI
  * features work with `npm run dev` and `npm run preview` when AIMLAPI_KEY is
  * set in .env. Without a key the app falls back to its rule-based features.
  */
 function localApi(env: AiEnv): Plugin {
-  const attach = (server: ViteDevServer | PreviewServer, load: () => Promise<typeof import('./api/_lib/handlers')>) => {
+  const attach = (server: ViteDevServer | PreviewServer, load: () => Promise<typeof import('./server/ai')>) => {
     server.middlewares.use(async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
       const match = (req.url ?? '').match(/^\/api\/(status|describe|check|narrate)(?:\?|$)/);
       if (!match) return next();
@@ -30,10 +30,10 @@ function localApi(env: AiEnv): Plugin {
   return {
     name: 'aquaverse-local-api',
     configureServer(server) {
-      attach(server, () => server.ssrLoadModule('/api/_lib/handlers.ts') as Promise<typeof import('./api/_lib/handlers')>);
+      attach(server, () => server.ssrLoadModule('/server/ai.ts') as Promise<typeof import('./server/ai')>);
     },
     configurePreviewServer(server) {
-      attach(server, () => import('./api/_lib/handlers'));
+      attach(server, () => import('./server/ai'));
     },
   };
 }

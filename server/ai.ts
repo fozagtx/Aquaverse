@@ -421,7 +421,7 @@ function clamp01(v: unknown): number {
 
 export const MAX_BODY_BYTES = 8 * 1024;
 
-/** Routes one API request. Used by the Vercel functions and the dev server. */
+/** Routes one API request. Used by the production server and the dev server. */
 export async function route(name: string, method: string, rawBody: string, ctx: HandlerContext): Promise<ApiResult> {
   if (name === 'status') {
     if (method !== 'GET') return { status: 405, body: { error: 'method' } };
@@ -439,15 +439,4 @@ export async function route(name: string, method: string, rawBody: string, ctx: 
   if (name === 'check') return handleCheck(body, ctx);
   if (name === 'narrate') return handleNarrate(body, ctx);
   return { status: 404, body: { error: 'not-found' } };
-}
-
-/** Adapter for Web-standard Request/Response (Vercel functions). */
-export async function respond(name: string, request: Request): Promise<Response> {
-  const ip = (request.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || request.headers.get('x-real-ip') || 'unknown';
-  const raw = request.method === 'POST' ? await request.text() : '';
-  const result = await route(name, request.method, raw, { env: process.env as AiEnv, fetch, ip });
-  return new Response(JSON.stringify(result.body), {
-    status: result.status,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-  });
 }

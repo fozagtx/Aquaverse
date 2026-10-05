@@ -112,11 +112,13 @@ Browser
       ├─ streamProfile.ts  stream check answers to a starting world
       └─ replay.ts         frames for rewind and scrubbing
 
-Optional server (api/), only when an AI key is set
-├─ api/describe.ts   free-text description → the five answers (TypeSafe Jev)
-├─ api/check.ts      scores a learner's explanation (TypeSafe Jev)
-├─ api/narrate.ts    friendlier wording of the narrator's facts (a very cheap chat model)
-└─ api/status.ts     which helpers are available
+Server (server/), deployed on Render
+├─ index.ts          serves the built site, security headers, /healthz
+└─ ai.ts             optional AI helpers, only when an AI key is set
+    ├─ /api/describe   free-text description → the five answers (TypeSafe Jev)
+    ├─ /api/check      scores a learner's explanation (TypeSafe Jev)
+    ├─ /api/narrate    friendlier wording of the narrator's facts (a very cheap chat model)
+    └─ /api/status     which helpers are available
 ```
 
 - The engine is separate from the renderer and UI, deterministic and seeded: the same seed, answers and stressor sequence always give the same run.
@@ -148,7 +150,7 @@ Without a key AquaVerse is fully rule-based and costs nothing to run. With a key
 - **Friendlier narrator wording.** A very cheap chat model (default `amazon/nova-micro-v1`) rewords the rule-based sentence. It receives only the structured facts, may not add numbers, and any reply containing a number the original did not have is thrown away. On any error the original sentence is shown.
 - **Check your understanding.** Jev scores the learner's own explanation of what happened.
 
-Copy `.env.example` to `.env` (or set the same variables in your host's settings):
+Copy `.env.example` to `.env` for local runs; on Render, set them in the service's Environment settings:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -157,11 +159,11 @@ Copy `.env.example` to `.env` (or set the same variables in your host's settings
 | `AI_DAILY_CALL_LIMIT` | `400` | Upstream calls allowed per day |
 | `AI_DISABLED` | unset | Set to `1` to switch every helper off without removing the key |
 
-**Keeping costs down.** Every call is cached by its inputs, rate limited to 12 per minute per visitor and counted against the daily limit. Rewording is capped at 110 output tokens. These guards live in server memory: on Render the single server keeps one count until it restarts, while on a serverless host each running instance keeps its own count and a cold start resets it. With a small balance, set a low `AI_DAILY_CALL_LIMIT` and watch usage on your AI/ML API dashboard, or set `AI_DISABLED=1` to stop all calls at once. Check current rates on the [AI/ML API pricing page](https://aimlapi.com/ai-ml-api-pricing).
+**Keeping costs down.** Every call is cached by its inputs, rate limited to 12 per minute per visitor and counted against the daily limit. Rewording is capped at 110 output tokens. These guards live in server memory, so a restart resets the count. With a small balance, set a low `AI_DAILY_CALL_LIMIT` and watch usage on your AI/ML API dashboard, or set `AI_DISABLED=1` to stop all calls at once. Check current rates on the [AI/ML API pricing page](https://aimlapi.com/ai-ml-api-pricing).
 
 ## Deploy
 
-**Render.** `render.yaml` is a Render Blueprint: in the Render dashboard choose **New > Blueprint** and pick this repository. It creates one Node web service (free plan) that builds the site, then runs `server/index.ts`, which serves the site and the AI helpers with the same security headers as Vercel. Render asks for `AIMLAPI_KEY` when you create it; leave it empty to run without AI. The blueprint sets `AI_DAILY_CALL_LIMIT` to 100. Free services sleep after a while without visitors, take a few seconds to wake, and a restart resets the in-memory call count.
+**Render.** `render.yaml` is a Render Blueprint: in the Render dashboard choose **New > Blueprint** and pick this repository. It creates one Node web service (free plan) that builds the site, then runs `server/index.ts`, which serves the site and the AI helpers. Render asks for `AIMLAPI_KEY` when you create it; leave it empty to run without AI. The blueprint sets `AI_DAILY_CALL_LIMIT` to 100. Free services sleep after a while without visitors, take a few seconds to wake, and a restart resets the in-memory call count.
 
 To run the same server locally:
 
@@ -170,9 +172,7 @@ npm run build && npm run build:server
 npm start          # http://localhost:3000, or set PORT
 ```
 
-**Vercel.** `vercel.json` builds the static site into `dist/` and serves `api/*.ts` as functions.
-
-Both set a strict content security policy (same-origin scripts, styles and requests only), `nosniff`, `no-referrer` and long-lived caching for hashed assets. Any static host works if you skip the AI helpers: deploy `dist/`.
+The server sets a strict content security policy (same-origin scripts, styles and requests only), `nosniff`, `no-referrer` and long-lived caching for hashed assets. Any static host works if you skip the AI helpers: deploy `dist/`.
 
 ## Limits
 

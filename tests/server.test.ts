@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { resetGuards } from '../api/_lib/handlers';
+import { resetGuards } from '../server/ai';
 import { createAppServer, SECURITY_HEADERS } from '../server/index';
 
 let root: string;
@@ -29,15 +29,7 @@ afterAll(() => {
   rmSync(join(tmpdir(), 'aquaverse-secret.txt'), { force: true });
 });
 
-describe('server for Render (render.yaml)', () => {
-  it('sends the same security headers as vercel.json', () => {
-    const vercel = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8')) as {
-      headers: Array<{ source: string; headers: Array<{ key: string; value: string }> }>;
-    };
-    const all = vercel.headers.find((h) => h.source === '/(.*)')!;
-    expect(Object.fromEntries(all.headers.map((h) => [h.key, h.value]))).toEqual(SECURITY_HEADERS);
-  });
-
+describe('production server (render.yaml)', () => {
   it('serves the app with its security headers', async () => {
     const res = await fetch(`${base}/`);
     expect(res.status).toBe(200);

@@ -11,7 +11,7 @@ import {
   route,
   sanitizeFacts,
   type HandlerContext,
-} from '../api/_lib/handlers';
+} from '../server/ai';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
