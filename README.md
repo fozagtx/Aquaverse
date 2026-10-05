@@ -2,11 +2,35 @@
 
 **See your stream. Stress it. Understand why its health is your health.**
 
+![AquaVerse running: a sewage leak is applied to a healthy stream, germs rise, oxygen falls, the health risk gauge climbs and the narrator explains why](docs/screenshots/demo.gif)
+
 AquaVerse is a living, pixel-art urban stream that shows how the health of the water, the wildlife and the people nearby rise and fall together. You describe a real stream in five plain questions, AquaVerse builds that stream, and then you apply pressures such as a heatwave, storm runoff or bank clearing and watch the consequences play out.
 
 Built for the **OneAquaHealth IEEE Global Hackathon, Track 4: Awareness & Storytelling**. It also touches Track 1 (plain-language stream assessment) and Track 6 (how a stream responds to climate stress).
 
 > AquaVerse is an illustrative teaching model. Every number in it is a starting value chosen so the simulation is readable on screen, not field data. It does not measure or predict any real stream.
+
+## Screenshots
+
+| Landing | Stream check |
+| --- | --- |
+| ![Landing page with a live pixel-art stream beside the pitch and the two start buttons](docs/screenshots/landing.png) | ![Stream check: picture answers for water clarity and smell, each with an "I'm not sure" option](docs/screenshots/stream-check.png) |
+
+**Your stream, live.** Indicator species move through the channel; the gauges, water readout and residents update as it runs.
+
+![Stream view of a healthy sample stream: the map, the One Health gauges, the water readout and the stressor controls](docs/screenshots/stream.png)
+
+**After a sewage leak.** The water darkens near the drain, oxygen falls, the health risk gauge rises and the narrator explains the chain.
+
+![Stream view four days after a sewage leak, with the narrator's explanation](docs/screenshots/sewage-leak.png)
+
+| Trends | Inspector |
+| --- | --- |
+| ![Trends: population, gauge, temperature and water quality charts with stressor markers](docs/screenshots/trends.png) | ![Inspector for a mosquito larva: what it is, what it needs right now, what it is doing and what its presence tells you](docs/screenshots/inspector.png) |
+
+| Stream log | On a phone |
+| --- | --- |
+| ![Stream log listing stressors and the narrator's explanations, newest first](docs/screenshots/stream-log.png) | ![The stream view on a 390 px wide phone screen](docs/screenshots/phone.png) |
 
 ---
 
