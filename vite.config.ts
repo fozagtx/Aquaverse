@@ -38,9 +38,11 @@ function localApi(env: AiEnv): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, isSsrBuild }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
+    // The server bundle (npm run build:server) needs no copy of public/.
+    publicDir: isSsrBuild ? false : 'public',
     plugins: [
       react(),
       localApi({

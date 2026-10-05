@@ -1,0 +1,23 @@
+# Render Blueprint for AquaVerse: one Node web service that serves the built
+# site and the optional AI helpers (server/index.ts). In the Render dashboard
+# choose New > Blueprint and pick this repository.
+services:
+  - type: web
+    name: aquaverse
+    runtime: node
+    plan: free
+    # Dev dependencies (Vite, TypeScript) are needed to build, so install them explicitly.
+    buildCommand: npm ci --include=dev && npm run build && npm run build:server
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      # Optional. Leave empty to run fully rule-based at no cost.
+      - key: AIMLAPI_KEY
+        sync: false
+      - key: AIMLAPI_NARRATOR_MODEL
+        value: amazon/nova-micro-v1
+      # Upstream AI calls allowed per day. Kept low to protect a small balance.
+      - key: AI_DAILY_CALL_LIMIT
+        value: "100"
